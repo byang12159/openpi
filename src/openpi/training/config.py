@@ -20,6 +20,7 @@ import openpi.models.tokenizer as _tokenizer
 import openpi.policies.aloha_policy as aloha_policy
 import openpi.policies.droid_policy as droid_policy
 import openpi.policies.libero_policy as libero_policy
+import openpi.policies.umi_dual_franka_policy as umi_dual_franka_policy
 import openpi.shared.download as _download
 import openpi.shared.normalize as _normalize
 import openpi.training.droid_rlds_dataset as droid_rlds_dataset
@@ -352,6 +353,66 @@ class LeRobotLiberoDataConfig(DataConfigFactory):
             repack_transforms=repack_transform,
             data_transforms=data_transforms,
             model_transforms=model_transforms,
+        )
+
+
+@dataclasses.dataclass(frozen=True)
+class LeRobotUmiDualFrankaDataConfig(DataConfigFactory):
+    """LeRobot config for dual-arm UMI demonstrations retargeted to EEF space.
+
+    The source dataset stores absolute 16-D state/action vectors:
+        [left xyz, left quat_xyzw, left gripper,
+         right xyz, right quat_xyzw, right gripper].
+
+    The policy transforms convert those vectors to the compact 20-D rot6d
+    representation used by the model. The relative variant additionally converts
+    every action waypoint to a true SE(3) transform relative to the chunk-start
+    state; the absolute baseline keeps action poses absolute.
+    """
+
+    action_representation: Literal["relative", "absolute"] = "relative"
+    default_prompt: str | None = None
+
+    @override
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        repack_transform = _transforms.Group(
+            inputs=[
+                _transforms.RepackTransform(
+                    {
+                        "observation/state": "observation.state",
+                        "observation/left_head": "observation.images.left_head",
+                        "observation/right_head": "observation.images.right_head",
+                        "actions": "action",
+                        "prompt": "task",
+                    }
+                )
+            ]
+        )
+
+        match self.action_representation:
+            case "relative":
+                data_transforms = _transforms.Group(
+                    inputs=[umi_dual_franka_policy.UmiDualFrankaRelativeInputs(model_type=model_config.model_type)],
+                    outputs=[umi_dual_franka_policy.UmiDualFrankaRelativeOutputs()],
+                )
+            case "absolute":
+                data_transforms = _transforms.Group(
+                    inputs=[umi_dual_franka_policy.UmiDualFrankaAbsoluteInputs(model_type=model_config.model_type)],
+                    outputs=[umi_dual_franka_policy.UmiDualFrankaAbsoluteOutputs()],
+                )
+            case _:
+                raise ValueError(
+                    f"action_representation must be either 'relative' or 'absolute', got {self.action_representation!r}"
+                )
+
+        model_transforms = ModelTransformFactory(default_prompt=self.default_prompt)(model_config)
+
+        return dataclasses.replace(
+            self.create_base_config(assets_dirs, model_config),
+            repack_transforms=repack_transform,
+            data_transforms=data_transforms,
+            model_transforms=model_transforms,
+            action_sequence_keys=("action",),
         )
 
 
@@ -968,6 +1029,72 @@ _CONFIGS = [
     # RoboArena & PolaRiS configs.
     *roboarena_config.get_roboarena_configs(),
     *polaris_config.get_polaris_configs(),
+    #
+    # Dual-arm Franka UMI cardboard-box configs.
+    #
+    # Source: byang11259/cardboard_box_tcp_curated. The default pair uses a
+    # derived one-logical-box-per-episode dataset. The explicit long-episode pair
+    # below points at the original multi-box recordings and intentionally lets
+    # the stock LeRobot loader form 50-step chunks across internal box
+    # boundaries. All variants consume absolute 16-D dual-EEF state/actions and
+    # convert them to compact 20-D rot6d vectors. Relative and absolute action
+    # variants compute independent quantile norm stats.
+    TrainConfig(
+        name="pi05_umi_dual_franka_cardboard_box_relative",
+        model=pi0_config.Pi0Config(pi05=True, action_horizon=50),
+        data=LeRobotUmiDualFrankaDataConfig(
+            repo_id="local/cardboard_box_tcp_curated_logical_train",
+            default_prompt="Assemble the cardboard box and put it into the bin",
+            action_representation="relative",
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
+        num_train_steps=5_000,
+        batch_size=32,
+        fsdp_devices=1,
+        num_workers=8,
+    ),
+    TrainConfig(
+        name="pi05_umi_dual_franka_cardboard_box_absolute",
+        model=pi0_config.Pi0Config(pi05=True, action_horizon=50),
+        data=LeRobotUmiDualFrankaDataConfig(
+            repo_id="local/cardboard_box_tcp_curated_logical_train",
+            default_prompt="Assemble the cardboard box and put it into the bin",
+            action_representation="absolute",
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
+        num_train_steps=5_000,
+        batch_size=32,
+        fsdp_devices=1,
+        num_workers=8,
+    ),
+    TrainConfig(
+        name="pi05_umi_dual_franka_cardboard_box_relative_long_episode",
+        model=pi0_config.Pi0Config(pi05=True, action_horizon=50),
+        data=LeRobotUmiDualFrankaDataConfig(
+            repo_id="byang11259/cardboard_box_tcp_curated",
+            default_prompt="Assemble the cardboard box and put it into the bin",
+            action_representation="relative",
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
+        num_train_steps=5_000,
+        batch_size=32,
+        fsdp_devices=1,
+        num_workers=8,
+    ),
+    TrainConfig(
+        name="pi05_umi_dual_franka_cardboard_box_absolute_long_episode",
+        model=pi0_config.Pi0Config(pi05=True, action_horizon=50),
+        data=LeRobotUmiDualFrankaDataConfig(
+            repo_id="byang11259/cardboard_box_tcp_curated",
+            default_prompt="Assemble the cardboard box and put it into the bin",
+            action_representation="absolute",
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
+        num_train_steps=5_000,
+        batch_size=32,
+        fsdp_devices=1,
+        num_workers=8,
+    ),
 ]
 
 if len({config.name for config in _CONFIGS}) != len(_CONFIGS):
