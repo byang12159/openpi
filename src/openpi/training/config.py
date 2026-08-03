@@ -378,6 +378,9 @@ class LeRobotUmiDualFrankaDataConfig(DataConfigFactory):
 
     action_representation: Literal["relative", "absolute"] = "relative"
     state_mode: Literal["full", "gripper_only"] = "full"
+    # Optional centered square crop (pixel side length) applied to both camera
+    # views in the shared input transform, before the model resize.
+    image_crop: int | None = None
     default_prompt: str | None = None
 
     @override
@@ -404,7 +407,9 @@ class LeRobotUmiDualFrankaDataConfig(DataConfigFactory):
                 data_transforms = _transforms.Group(
                     inputs=[
                         umi_dual_franka_policy.UmiDualFrankaRelativeInputs(
-                            model_type=model_config.model_type, state_mode=self.state_mode
+                            model_type=model_config.model_type,
+                            state_mode=self.state_mode,
+                            image_crop=self.image_crop,
                         )
                     ],
                     outputs=[
@@ -420,7 +425,11 @@ class LeRobotUmiDualFrankaDataConfig(DataConfigFactory):
                         "the absolute baseline decodes world-frame targets and needs absolute state."
                     )
                 data_transforms = _transforms.Group(
-                    inputs=[umi_dual_franka_policy.UmiDualFrankaAbsoluteInputs(model_type=model_config.model_type)],
+                    inputs=[
+                        umi_dual_franka_policy.UmiDualFrankaAbsoluteInputs(
+                            model_type=model_config.model_type, image_crop=self.image_crop
+                        )
+                    ],
                     outputs=[umi_dual_franka_policy.UmiDualFrankaAbsoluteOutputs()],
                 )
             case _:
@@ -1130,6 +1139,30 @@ _CONFIGS = [
         checkpoint_base_dir="/mnt/localssd/Sichang/openpi-checkpoints",
         assets_base_dir="/mnt/localssd/Sichang/openpi-assets",
     ),
+    # Cross-embodiment variant with cropped views: same as the gripper-only
+    # config below, plus a centered 272 px crop of both 384 px fisheye views
+    # (largest square inscribed in the fisheye circle) applied in the shared
+    # input transform. Removes the dead black corners and most scene/operator
+    # periphery and magnifies the workspace ~1.4x after the model resize.
+    TrainConfig(
+        name="pi05_umi_dual_franka_cardboard_box_relative_gripper_only_crop272_long_episode",
+        model=pi0_config.Pi0Config(pi05=True, action_horizon=50),
+        data=LeRobotUmiDualFrankaDataConfig(
+            repo_id="local/cardboard_box_tcp_curated_x264",
+            default_prompt="Assemble the cardboard box and put it into the bin",
+            action_representation="relative",
+            state_mode="gripper_only",
+            image_crop=272,
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
+        num_train_steps=10000,
+        batch_size=128,
+        fsdp_devices=8,
+        num_workers=8,
+        save_interval=5_000,
+        checkpoint_base_dir="/mnt/localssd/Sichang/openpi-checkpoints",
+        assets_base_dir="/mnt/localssd/Sichang/openpi-assets",
+    ),
     # Cross-embodiment variant: relative actions with a 2-D gripper-only policy
     # state (no pose dimensions). The server returns relative chunks; the
     # robot client composes them with its own query-time TCP anchors.
@@ -1137,10 +1170,11 @@ _CONFIGS = [
         name="pi05_umi_dual_franka_cardboard_box_relative_gripper_only_long_episode",
         model=pi0_config.Pi0Config(pi05=True, action_horizon=50),
         data=LeRobotUmiDualFrankaDataConfig(
-            repo_id="local/cardboard_box_tcp_curated_x264",
+            repo_id="local/cardboard_box_tcp_curated_10s_x264",
             default_prompt="Assemble the cardboard box and put it into the bin",
             action_representation="relative",
             state_mode="gripper_only",
+            image_crop=200,
         ),
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
         num_train_steps=10000,
