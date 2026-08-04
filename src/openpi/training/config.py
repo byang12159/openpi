@@ -1139,6 +1139,29 @@ _CONFIGS = [
         checkpoint_base_dir="/mnt/localssd/Sichang/openpi-checkpoints",
         assets_base_dir="/mnt/localssd/Sichang/openpi-assets",
     ),
+    # Full-source-set variant: identical recipe to the 10s gripper-only config
+    # (2-D gripper state, relative chunks, 224 px crop) on the complete
+    # vid7to54 export (46 session-length episodes, 205k frames, x264 re-encode;
+    # episodes 37-39 relabeled from a placeholder to the standard task string).
+    TrainConfig(
+        name="pi05_umi_dual_franka_cardboard_box_relative_gripper_only_vid7to54",
+        model=pi0_config.Pi0Config(pi05=True, action_horizon=50),
+        data=LeRobotUmiDualFrankaDataConfig(
+            repo_id="local/cardboard_box_tcp_vid7to54_x264",
+            default_prompt="Assemble the cardboard box and put it into the bin",
+            action_representation="relative",
+            state_mode="gripper_only",
+            image_crop=224,
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
+        num_train_steps=10000,
+        batch_size=128,
+        fsdp_devices=8,
+        num_workers=8,
+        save_interval=5_000,
+        checkpoint_base_dir="/mnt/localssd/Sichang/openpi-checkpoints",
+        assets_base_dir="/mnt/localssd/Sichang/openpi-assets",
+    ),
     # Cross-embodiment variant with cropped views: same as the gripper-only
     # config below, plus a centered 272 px crop of both 384 px fisheye views
     # (largest square inscribed in the fisheye circle) applied in the shared
