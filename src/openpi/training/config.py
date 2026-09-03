@@ -1106,8 +1106,6 @@ _CONFIGS = [
         fsdp_devices=1,
         num_workers=8,
         save_interval=5_000,
-        checkpoint_base_dir="/mnt/localssd/Sichang/openpi-checkpoints",
-        assets_base_dir="/mnt/localssd/Sichang/openpi-assets",
     ),
     TrainConfig(
         name="pi05_umi_dual_franka_cardboard_box_absolute",
@@ -1123,8 +1121,6 @@ _CONFIGS = [
         fsdp_devices=1,
         num_workers=8,
         save_interval=5_000,
-        checkpoint_base_dir="/mnt/localssd/Sichang/openpi-checkpoints",
-        assets_base_dir="/mnt/localssd/Sichang/openpi-assets",
     ),
     TrainConfig(
         name="pi05_umi_dual_franka_cardboard_box_relative_long_episode",
@@ -1140,8 +1136,6 @@ _CONFIGS = [
         fsdp_devices=1,
         num_workers=8,
         save_interval=5_000,
-        checkpoint_base_dir="/mnt/localssd/Sichang/openpi-checkpoints",
-        assets_base_dir="/mnt/localssd/Sichang/openpi-assets",
     ),
     TrainConfig(
         name="pi05_umi_dual_franka_cardboard_box_absolute_long_episode",
@@ -1157,8 +1151,6 @@ _CONFIGS = [
         fsdp_devices=1,
         num_workers=8,
         save_interval=5_000,
-        checkpoint_base_dir="/mnt/localssd/Sichang/openpi-checkpoints",
-        assets_base_dir="/mnt/localssd/Sichang/openpi-assets",
     ),
     # Full-source-set variant: identical recipe to the 10s gripper-only config
     # (2-D gripper state, relative chunks, 224 px crop) on the complete
@@ -1180,8 +1172,6 @@ _CONFIGS = [
         fsdp_devices=8,
         num_workers=32,
         save_interval=5_000,
-        checkpoint_base_dir="/mnt/localssd/Sichang/openpi-checkpoints",
-        assets_base_dir="/mnt/localssd/Sichang/openpi-assets",
     ),
     # Stack-cubes with a relative-history policy state: instead of the 2-D
     # gripper vector, the state is the previous observation frame's TCP pose
@@ -1210,8 +1200,6 @@ _CONFIGS = [
         # checkpoint plus those with step % keep_period == 0, so the default
         # 5_000 would silently prune the 2k and 4k checkpoints.
         keep_period=2_000,
-        checkpoint_base_dir="/mnt/localssd/Sichang/openpi-checkpoints",
-        assets_base_dir="/mnt/localssd/Sichang/openpi-assets",
     ),
     # Stack-cubes task, same cross-embodiment recipe as the cardboard-box
     # gripper-only config: 2-D gripper state, fixed-anchor relative action20,
@@ -1234,8 +1222,6 @@ _CONFIGS = [
         fsdp_devices=8,
         num_workers=8,
         save_interval=5_000,
-        checkpoint_base_dir="/mnt/localssd/Sichang/openpi-checkpoints",
-        assets_base_dir="/mnt/localssd/Sichang/openpi-assets",
     ),
     # Cross-embodiment variant with cropped views: same as the gripper-only
     # config below, plus a centered 272 px crop of both 384 px fisheye views
@@ -1258,8 +1244,6 @@ _CONFIGS = [
         fsdp_devices=8,
         num_workers=8,
         save_interval=5_000,
-        checkpoint_base_dir="/mnt/localssd/Sichang/openpi-checkpoints",
-        assets_base_dir="/mnt/localssd/Sichang/openpi-assets",
     ),
     # Cross-embodiment variant: relative actions with a 2-D gripper-only policy
     # state (no pose dimensions). The server returns relative chunks; the
@@ -1280,8 +1264,6 @@ _CONFIGS = [
         fsdp_devices=8,
         num_workers=8,
         save_interval=5_000,
-        checkpoint_base_dir="/mnt/localssd/Sichang/openpi-checkpoints",
-        assets_base_dir="/mnt/localssd/Sichang/openpi-assets",
     ),
 ]
 

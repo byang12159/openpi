@@ -101,8 +101,9 @@ def test_umi_dual_franka_config_contract(
     assert train_config.fsdp_devices == hyper["fsdp_devices"]
     assert train_config.num_workers == 8
     assert train_config.num_train_steps == hyper["num_train_steps"]
-    assert train_config.assets_base_dir == "/mnt/localssd/Sichang/openpi-assets"
-    assert train_config.checkpoint_base_dir == "/mnt/localssd/Sichang/openpi-checkpoints"
+    # Upstream defaults: relative to the working directory, overridable per run on the CLI.
+    assert train_config.assets_base_dir == "./assets"
+    assert train_config.checkpoint_base_dir == "./checkpoints"
 
     data_config = train_config.data.create(tmp_path, train_config.model)
     assert data_config.repo_id == repo_id

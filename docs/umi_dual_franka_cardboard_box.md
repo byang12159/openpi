@@ -67,9 +67,10 @@ their representation is the same.
 The four full-state configs register portable one-H200 defaults: full
 fine-tuning, batch size 32, `fsdp_devices=1`, eight data workers, and 5,000
 steps. The gripper-only configs register an 8-GPU recipe instead: batch size
-128, `fsdp_devices=8`, 10,000 steps. On this machine all seven configs use
-`/mnt/localssd/Sichang/openpi-assets` and
-`/mnt/localssd/Sichang/openpi-checkpoints`.
+128, `fsdp_devices=8`, 10,000 steps. All configs keep the upstream defaults
+`./assets` and `./checkpoints`, resolved from the repository root; override them
+per run with `--assets-base-dir` and `--checkpoint-base-dir` when training on a
+machine that keeps them elsewhere.
 
 During training, the adapter maps each LeRobot row's `task` string to the model
 `prompt`, so a reviewed logical-episode manifest can supply a fold-only label.
