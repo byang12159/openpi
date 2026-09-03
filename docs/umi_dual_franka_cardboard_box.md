@@ -1,12 +1,10 @@
 # UMI dual-Franka cardboard-box fine-tuning and deployment
 
-This guide supports two episode-construction choices from
-[`byang11259/cardboard_box_tcp_curated`](https://huggingface.co/datasets/byang11259/cardboard_box_tcp_curated),
-then fine-tunes the JAX π0.5 policy and deploys it on a dual-Franka setup with
-two UMI fisheye cameras. The recommended choice materializes one logical
-episode per physical box. An explicit long-episode ablation trains directly on
-the original source episodes. Each choice has a primary query-anchor-relative
-representation and a controlled absolute-action baseline.
+This guide fine-tunes the JAX π0.5 policy on dual-Franka UMI demonstrations and deploys it on a dual-Franka setup with two UMI fisheye cameras.
+It covers two tasks and nine registered configs.
+For the cardboard-box task ([`byang11259/cardboard_box_tcp_curated`](https://huggingface.co/datasets/byang11259/cardboard_box_tcp_curated)) it supports two episode-construction choices: the recommended choice materializes one logical episode per physical box, and an explicit long-episode ablation trains directly on the original source episodes.
+Each choice has a primary query-anchor-relative representation and a controlled absolute-action baseline.
+Two cross-embodiment state modes, `gripper_only` and `relative_history`, remove absolute pose from the policy state entirely; they are applied to the cardboard-box exports and to the stack-cubes task (see [Stack-cubes task](#stack-cubes-task)).
 
 > [!WARNING]
 > A source dataset episode can contain **multiple physical cardboard boxes**.
@@ -21,62 +19,75 @@ representation and a controlled absolute-action baseline.
 
 ## Registered configs
 
-| Episode path | Purpose | Config | Dataset repo |
-| --- | --- | --- | --- |
-| Logical box (recommended) | relative primary | `pi05_umi_dual_franka_cardboard_box_relative` | `local/cardboard_box_tcp_curated_logical_train` |
-| Logical box (recommended) | absolute baseline | `pi05_umi_dual_franka_cardboard_box_absolute` | `local/cardboard_box_tcp_curated_logical_train` |
-| Original source episode (ablation) | relative primary | `pi05_umi_dual_franka_cardboard_box_relative_long_episode` | `local/cardboard_box_tcp_curated_x264` |
-| Original source episode (ablation) | absolute baseline | `pi05_umi_dual_franka_cardboard_box_absolute_long_episode` | `local/cardboard_box_tcp_curated_x264` |
-| 10s-segmented source episodes | gripper-only relative, 224 px crop | `pi05_umi_dual_franka_cardboard_box_relative_gripper_only_long_episode` | `local/cardboard_box_tcp_curated_10s_x264` |
-| Full vid7to54 source episodes | gripper-only relative, 224 px crop | `pi05_umi_dual_franka_cardboard_box_relative_gripper_only_vid7to54` | `local/cardboard_box_tcp_vid7to54_x264` |
-| Original source episode (ablation) | gripper-only relative, 272 px crop | `pi05_umi_dual_franka_cardboard_box_relative_gripper_only_crop272_long_episode` | `local/cardboard_box_tcp_curated_x264` |
+Every value in this table is read from the `TrainConfig` entries in `src/openpi/training/config.py`.
+
+| Config | Dataset repo | Episode path and purpose | `state_mode` | Actions | `image_crop` | Steps x batch |
+| --- | --- | --- | --- | --- | --- | --- |
+| `pi05_umi_dual_franka_cardboard_box_relative` | `local/cardboard_box_tcp_curated_logical_train` | logical box (recommended), relative primary | `full` | relative | none | 5,000 x 32 |
+| `pi05_umi_dual_franka_cardboard_box_absolute` | `local/cardboard_box_tcp_curated_logical_train` | logical box (recommended), absolute baseline | `full` | absolute | none | 5,000 x 32 |
+| `pi05_umi_dual_franka_cardboard_box_relative_long_episode` | `local/cardboard_box_tcp_curated_x264` | original source episodes (ablation), relative primary | `full` | relative | none | 5,000 x 32 |
+| `pi05_umi_dual_franka_cardboard_box_absolute_long_episode` | `local/cardboard_box_tcp_curated_x264` | original source episodes (ablation), absolute baseline | `full` | absolute | none | 5,000 x 32 |
+| `pi05_umi_dual_franka_cardboard_box_relative_gripper_only_long_episode` | `local/cardboard_box_tcp_curated_10s_x264` | 10 s resegmented source episodes, gripper-only cross-embodiment | `gripper_only` | relative | 224 | 10,000 x 128 |
+| `pi05_umi_dual_franka_cardboard_box_relative_gripper_only_crop272_long_episode` | `local/cardboard_box_tcp_curated_x264` | original source episodes, gripper-only with the inscribed-square crop | `gripper_only` | relative | 272 | 10,000 x 128 |
+| `pi05_umi_dual_franka_cardboard_box_relative_gripper_only_vid7to54` | `local/cardboard_box_tcp_vid7to54_x264` | complete vid7to54 session-length episodes, gripper-only | `gripper_only` | relative | 224 | 10,000 x 128 |
+| `pi05_umi_dual_franka_stack_cubes_relative_gripper_only` | `local/stack_cubes_tcp_x264` | stack-cubes task, gripper-only recipe | `gripper_only` | relative | 224 | 10,000 x 128 |
+| `pi05_umi_dual_franka_stack_cubes_relative_history` | `local/stack_cubes_takes_x264` | stack-cubes short takes, relative-history state (`observation_horizon=2`) | `relative_history` | relative | 224 | 6,000 x 64 |
 
 > [!NOTE]
-> The long-episode configs point at `local/cardboard_box_tcp_curated_x264`, a
-> local derived copy of the curated source dataset whose parquet/meta files are
-> byte-identical and whose 36 videos are re-encoded near-losslessly
-> (libx264, `-crf 14 -g 15 -bf 0`). The original HEVC exports use ~250-frame
-> GOPs with B-frames; lerobot's torchcodec decode path
-> (`seek_mode="approximate"`) returns wrong frames near GOP tails on such
-> streams and fails its 1e-4 s timestamp-tolerance check. Dense keyframes and
-> no B-frames make index-to-pts mapping exact and random access fast. See
-> `REENCODE_PROVENANCE.md` inside the derived dataset directory.
+> The full-state `_long_episode` pair and the `_crop272_long_episode` config point at `local/cardboard_box_tcp_curated_x264`, a local derived copy of the curated source dataset whose parquet/meta files are byte-identical and whose 36 videos are re-encoded near-losslessly (libx264, `-crf 14 -g 15 -bf 0`).
+> The original HEVC exports use ~250-frame GOPs with B-frames; lerobot's torchcodec decode path (`seek_mode="approximate"`) returns wrong frames near GOP tails on such streams and fails its 1e-4 s timestamp-tolerance check.
+> Dense keyframes and no B-frames make index-to-pts mapping exact and random access fast.
+> Every other `local/...` repo above is a derived copy as well; see [Derived datasets](#derived-datasets) for the sources, the re-encode tool, and the `REENCODE_PROVENANCE.md` each re-encoded directory carries.
 
-All seven configs:
+All nine configs:
 
 - start from `gs://openpi-assets/checkpoints/pi05_base/params`;
-- use the same two cameras, 6D rotation encoding, prompt plumbing, horizon,
-  and training hyperparameters;
+- use the same two cameras, 6D rotation encoding, prompt plumbing, and
+  horizon;
 - consume the canonical post-repack keys `observation/state`,
   `observation/left_head`, `observation/right_head`, `actions`, and `prompt`;
 - use an action horizon of 50 at the dataset's nominal 29.97 Hz, about
   1.67 seconds of predicted motion; and
 - require their **own fresh normalization statistics**.
 
-For either episode path, the full-state relative and absolute configs use
-identical absolute state20. The relative action is fixed-query-anchor
-true-SE(3) action20; the baseline action is absolute action20. The
-gripper-only variant keeps the relative action20 but reduces the policy state
-to the 2-D absolute gripper vector (see
-[Gripper-only-state cross-embodiment variant](#gripper-only-state-cross-embodiment-variant)).
-The logical and long paths must not share norm stats or checkpoints even when
-their representation is the same.
+For either episode path, the full-state relative and absolute configs use identical absolute state20.
+The relative action is fixed-query-anchor true-SE(3) action20; the baseline action is absolute action20.
+The gripper-only configs keep the relative action20 but reduce the policy state to the 2-D absolute gripper vector (see [Gripper-only-state cross-embodiment variant](#gripper-only-state-cross-embodiment-variant)).
+The relative-history config also keeps the relative action20 and replaces the state with the previous frame's pose expressed in the current TCP frame (see [Relative-history-state cross-embodiment variant](#relative-history-state-cross-embodiment-variant)).
+Configs must not share norm stats or checkpoints even when their representation is the same.
 
-The four full-state configs register portable one-H200 defaults: full
-fine-tuning, batch size 32, `fsdp_devices=1`, eight data workers, and 5,000
-steps. The gripper-only configs register an 8-GPU recipe instead: batch size
-128, `fsdp_devices=8`, 10,000 steps. All configs keep the upstream defaults
-`./assets` and `./checkpoints`, resolved from the repository root; override them
-per run with `--assets-base-dir` and `--checkpoint-base-dir` when training on a
-machine that keeps them elsewhere.
+The registered training recipes differ per config:
 
-During training, the adapter maps each LeRobot row's `task` string to the model
-`prompt`, so a reviewed logical-episode manifest can supply a fold-only label.
-If no prompt is present at inference, the registered configs fall back to the
-full-task prompt:
+| Config | `batch_size` | `fsdp_devices` | `num_workers` | `num_train_steps` | `save_interval` |
+| --- | --- | --- | --- | --- | --- |
+| `pi05_umi_dual_franka_cardboard_box_relative` | 32 | 1 | 8 | 5,000 | 5,000 |
+| `pi05_umi_dual_franka_cardboard_box_absolute` | 32 | 1 | 8 | 5,000 | 5,000 |
+| `pi05_umi_dual_franka_cardboard_box_relative_long_episode` | 32 | 1 | 8 | 5,000 | 5,000 |
+| `pi05_umi_dual_franka_cardboard_box_absolute_long_episode` | 32 | 1 | 8 | 5,000 | 5,000 |
+| `pi05_umi_dual_franka_cardboard_box_relative_gripper_only_long_episode` | 128 | 8 | 8 | 10,000 | 5,000 |
+| `pi05_umi_dual_franka_cardboard_box_relative_gripper_only_crop272_long_episode` | 128 | 8 | 8 | 10,000 | 5,000 |
+| `pi05_umi_dual_franka_cardboard_box_relative_gripper_only_vid7to54` | 128 | 8 | 32 | 10,000 | 5,000 |
+| `pi05_umi_dual_franka_stack_cubes_relative_gripper_only` | 128 | 8 | 8 | 10,000 | 5,000 |
+| `pi05_umi_dual_franka_stack_cubes_relative_history` | 64 | 4 | 16 | 6,000 | 2,000 |
+
+The four full-state configs are portable one-H200 defaults: full fine-tuning on a single device.
+The gripper-only configs register an 8-GPU recipe and the relative-history config a 4-GPU recipe.
+`scripts/train.py` rejects a `batch_size` that the visible device count does not divide, and the mesh rejects a device count that `fsdp_devices` does not divide, so override `--batch-size` and `--fsdp-devices` together when running a multi-GPU recipe on a different node.
+The vid7to54 config uses 32 data workers because per-sample video decode from its 46 session-length episodes is the bottleneck.
+The relative-history config also pins `keep_period=2_000` to its save interval: orbax keeps only the most recent checkpoint plus those with `step % keep_period == 0`, so the default 5,000 would silently prune the 2k and 4k checkpoints.
+All configs keep the upstream defaults `./assets` and `./checkpoints`, resolved from the repository root; override them per run with `--assets-base-dir` and `--checkpoint-base-dir` when training on a machine that keeps them elsewhere.
+
+During training, the adapter maps each LeRobot row's `task` string to the model `prompt`, so a reviewed logical-episode manifest can supply a fold-only label.
+If no prompt is present at inference, the cardboard-box configs fall back to the full-task prompt:
 
 ```text
 Assemble the cardboard box and put it into the bin
+```
+
+The two stack-cubes configs fall back to their task's prompt instead:
+
+```text
+Stack the cubes into a tower
 ```
 
 Do not change only the prompt to create a fold-only dataset. See
@@ -156,10 +167,9 @@ while producing dangerous commands.
 
 ### Stock OpenPI/LeRobot long-source semantics
 
-The two `_long_episode` configs deliberately point at the untouched
-`byang11259/cardboard_box_tcp_curated` source repo and use the stock OpenPI
-LeRobot action-chunk path
-([OpenPI loader](../src/openpi/training/data_loader.py)):
+The four `_long_episode` configs train on source-derived episodes that are not box-segmented, so a LeRobot chunk can still cross a physical-box boundary.
+They do not read the Hugging Face download itself: the full-state pair and the `_crop272_long_episode` config point at `local/cardboard_box_tcp_curated_x264`, a mirror of `byang11259/cardboard_box_tcp_curated` whose parquet and meta files are byte-identical and whose videos are re-encoded, and the `_gripper_only_long_episode` config points at `local/cardboard_box_tcp_curated_10s_x264`, a 10 s time-resegmentation of the same source that is likewise not box-segmented (see [Derived datasets](#derived-datasets)).
+All four use the stock OpenPI LeRobot action-chunk path ([OpenPI loader](../src/openpi/training/data_loader.py)):
 
 ```text
 delta_timestamps["action"] =
@@ -436,6 +446,34 @@ The registered `_long_episode` configs intentionally retain the original
 full-task source episodes and task labels. They are not fold-only configs.
 Changing only a long config's prompt is contradictory.
 
+## Stack-cubes task
+
+The second task uses two public exports of dual-Franka UMI stacking demonstrations with the same raw 16-D state/action contract and the same two `front_equi` cameras.
+Both carry a single task string, which the two stack-cubes configs also register as their `default_prompt`:
+
+```text
+Stack the cubes into a tower
+```
+
+| Source | Episodes | Frames | Native video frame | Config |
+| --- | --- | --- | --- | --- |
+| [`byang11259/stack_cubes_tcp`](https://huggingface.co/datasets/byang11259/stack_cubes_tcp) | 46 | 33,276 | 1920 x 1920 | `pi05_umi_dual_franka_stack_cubes_relative_gripper_only` |
+| [`byang11259/stack_cubes_takes`](https://huggingface.co/datasets/byang11259/stack_cubes_takes) | 43 | 10,664 | 1920 x 1920 | `pi05_umi_dual_franka_stack_cubes_relative_history` |
+
+Both exports publish 1920 px video frames, whereas the cardboard-box curated exports that the crop rules below were written for are 384 px.
+The derived training copies `local/stack_cubes_tcp_x264` and `local/stack_cubes_takes_x264` therefore downscale every video to 384 px (`--scale 384`) before the same x264 GOP-15, no-B-frame re-encode used for the cardboard-box mirrors, so `image_crop=224` selects the same fraction of the field of view and the same ~1.71x magnification as on the cardboard-box configs.
+The downscale happens once, in the derived dataset; the input transform still receives 384 x 384 frames, and deployment clients for these configs must downscale live frames to 384 x 384 the same way before sending them, uncropped.
+See [Derived datasets](#derived-datasets) for the exact command.
+
+`pi05_umi_dual_franka_stack_cubes_relative_gripper_only` is the cardboard-box gripper-only recipe applied to the new task (2-D gripper state, fixed-anchor relative action20, 224 px crop, batch 128 on 8 GPUs for 10,000 steps) plus raw rot6d through a neutralized stats file, a step the cardboard-box configs do not record.
+
+`pi05_umi_dual_franka_stack_cubes_relative_history` trains on the smaller `stack_cubes_takes` export (43 takes of roughly 6.5 to 11 s each, about 3x fewer frames than `stack_cubes_tcp`).
+The 10,000 x 128 recipe would have made about 120 passes over it, so the config is retuned to 6,000 steps at batch 64 on 4 GPUs (about 36 passes) with checkpoints every 2,000 steps and `keep_period` pinned to the same value so orbax retains the 2k and 4k checkpoints.
+Its state mode is described under [Relative-history-state cross-embodiment variant](#relative-history-state-cross-embodiment-variant).
+
+The repository has no splitter or manifest for this task.
+The exports are used as published, and LeRobot chunking stays inside each recorded episode.
+
 ## Model representations
 
 Define `T^A_B` as the pose of frame `B` expressed in frame `A`. Both configs
@@ -512,17 +550,13 @@ relative primary so that pairwise comparison isolates action relativity.
 ### Gripper-only-state cross-embodiment variant
 
 > [!NOTE]
-> The registered `pi05_umi_dual_franka_cardboard_box_relative_gripper_only_long_episode`
-> config trains on `local/cardboard_box_tcp_curated_10s_x264` (the
-> finer-segmented 107-episode 10s dataset, x264 re-encode, episodes 100-103
-> relabeled from a placeholder to the standard task string) with
-> `image_crop=224` (see
-> [Cropped fisheye views](#cropped-fisheye-views-image_crop)). The
-> `_crop272_long_episode` sibling keeps the original 18-episode dataset.
+> Four configs use `state_mode="gripper_only"`.
+> `pi05_umi_dual_franka_cardboard_box_relative_gripper_only_long_episode` trains on `local/cardboard_box_tcp_curated_10s_x264` (the finer-segmented 107-episode 10 s dataset, x264 re-encode, episodes 100-103 relabeled from a placeholder to the standard task string) with `image_crop=224` (see [Cropped fisheye views](#cropped-fisheye-views-image_crop)).
+> The `_crop272_long_episode` sibling keeps the original 18-episode dataset with the 272 px crop.
+> `pi05_umi_dual_franka_cardboard_box_relative_gripper_only_vid7to54` applies the 224 px recipe to the complete vid7to54 export.
+> `pi05_umi_dual_franka_stack_cubes_relative_gripper_only` applies it to the stack-cubes task (see [Stack-cubes task](#stack-cubes-task)).
 
-`pi05_umi_dual_franka_cardboard_box_relative_gripper_only_long_episode` keeps
-the fixed-anchor relative action20 exactly as the primary relative config but
-replaces the 20-D absolute state with the 2-D absolute gripper vector:
+The gripper-only configs keep the fixed-anchor relative action20 exactly as the primary relative config but replace the 20-D absolute state with the 2-D absolute gripper vector:
 
 ```text
 [left_current_gripper, right_current_gripper]
@@ -552,6 +586,42 @@ Differences from the other configs:
   waypoint `k` against the pose reached at waypoint `k - 1`, and never refresh
   the anchor during open-loop prefix execution.
 
+### Relative-history-state cross-embodiment variant
+
+`pi05_umi_dual_franka_stack_cubes_relative_history` uses `state_mode="relative_history"` with `observation_horizon=2`.
+Like the gripper-only variant it carries no absolute pose, so it stays cross-embodiment and the server keeps returning relative chunks; unlike it, the state exposes the recent motion that a single-frame observation cannot provide.
+The policy state is 20-D with the same per-arm layout as the relative action:
+
+```text
+[
+  left_rel_xyz[3], left_rel_rot6d[6], left_current_gripper[1],
+  right_rel_xyz[3], right_rel_rot6d[6], right_current_gripper[1],
+]
+```
+
+For an observation window `s[t - H + 1], ..., s[t]` (oldest first, current frame last), the history pose is the window's first frame expressed in the **current** TCP frame of the same arm:
+
+```text
+T_rel_state[r, t] = inverse(T_world_tcp[r, t]) @ T_world_tcp[r, t - H + 1]
+```
+
+With `observation_horizon=2` that is the previous frame.
+`raw16_history_to_relative_state20` reuses the relative-action encoder for the pose math, so the true-SE(3) convention and the row-major rot6d encoding cannot drift apart from the action targets; the gripper slots are overwritten with the current absolute values and are never differenced.
+
+Data loading:
+
+- `LeRobotUmiDualFrankaDataConfig(observation_horizon=2)` sets `DataConfig.state_sequence_keys=("observation.state",)` and `DataConfig.observation_horizon=2`; `state_mode="relative_history"` with `observation_horizon < 2` is rejected, because one frame carries no history.
+- `create_torch_dataset` in `src/openpi/training/data_loader.py` then asks LeRobot for the window with negative delta timestamps, `[(t - H + 1) / fps for t in range(H)]`, which is `[-1 / fps, 0]` for `H = 2`, so each sample's `observation.state` arrives as an `(H, 16)` array oldest first.
+- LeRobot clamps requests that reach before the episode start, so the history frame there equals the current frame and the relative pose degrades to identity ("no motion"), the same value a bare `(16,)` state produces.
+- The relative-action anchor is always the window's **last** frame, the current state; `_build_inputs` takes it from that row in every state mode, and a policy test pins this, because anchoring on the history frame would silently shift every target.
+
+Serving and normalization:
+
+- The client sends `observation/state` as an `(observation_horizon, 16)` window, oldest first; a bare `(16,)` state is accepted but yields the identity history, so the policy then sees only the grippers.
+- The output transform is `UmiDualFrankaRelativeGripperOnlyOutputs`, which `config.py` selects for every `state_mode` other than `"full"`: the response is a `[50, 16]` relative chunk that the client composes against the last frame of the window it sent.
+- `state_mode="relative_history"` requires `action_representation="relative"`; combining it with the absolute baseline is rejected.
+- The `state` norm stats are 20-D. `scripts/neutralize_rot6d_norm_stats.py` detects this state mode and neutralizes the state's rot6d dims together with the action's, so rot6d stays raw in both (see [Raw-rot6d variant of the quantile stats](#raw-rot6d-variant-of-the-quantile-stats)).
+
 ### Rotation and internal padding
 
 The implemented 6D convention is the first two **rows** of the rotation matrix,
@@ -561,8 +631,8 @@ preprocessing and online serving; do not mix it with a column-based decoder or
 transpose the decoded matrix. Tests must cover identity, random rotations,
 near-degenerate 6D vectors, and quaternion sign equivalence (`q` and `-q`).
 
-The physical action dimension is always 20, and the full-state configs use a
-20-D state (the gripper-only variant's state is 2-D). π0.5 zero-pads state and
+The physical action dimension is always 20, and the full-state and relative-history configs use a 20-D state (the gripper-only state is 2-D).
+π0.5 zero-pads state and
 actions to its native 32-dimensional model tensors internally and slices
 predictions back to 20 before the robot-specific output transform. The padded
 values have no robot meaning and must never reach a controller or enter the
@@ -619,10 +689,9 @@ Rules:
   across different crops (or between cropped and uncropped configs).
 - State and action processing are completely unaffected by the crop.
 
-The two source cameras are the same model and projection. Their images are
-384 × 384 `front_equi` fisheye views at nominal 29.97 Hz. The π0.5
-base/exterior slot is filled with a placeholder and marked absent in the image
-mask; it is not a third real camera.
+The two source cameras are the same model and projection.
+Their images are `front_equi` fisheye views at nominal 29.97 Hz, 384 x 384 in the cardboard-box curated exports and in the downscaled stack-cubes copies (see [Stack-cubes task](#stack-cubes-task)).
+The π0.5 base/exterior slot is filled with a placeholder and marked absent in the image mask; it is not a third real camera.
 
 Deployment must use the same camera model and projection as the demonstrations:
 
@@ -662,12 +731,15 @@ Franka joints
   -> FK in each robot base
   -> fixed flange-to-chopstick-tip transform
   -> calibrated common marker/world TCP poses
-  -> absolute state20 (gripper-only config: 2-D gripper state)
+  -> policy state (state_mode "full": absolute state20;
+     "gripper_only": 2-D gripper state;
+     "relative_history": 20-D previous frame in the current TCP frame)
   -> π0.5 action20
-  -> (full-state relative config) policy output transform composes the saved
-     query-time TCP anchors server-side
-  -> (gripper-only config) the server returns the relative chunk and the
-     robot client composes its own saved query-time TCP anchors
+  -> (state_mode "full", relative actions) policy output transform composes
+     the saved query-time TCP anchors server-side
+  -> (state_mode "gripper_only" or "relative_history") the server returns the
+     relative chunk and the robot client composes its own saved query-time
+     TCP anchors
   -> absolute world TCP targets
   -> transform into each Franka base
   -> convert TCP target to flange target if required by the controller
@@ -696,11 +768,10 @@ bases, and stop if calibration, FK, timestamps, or camera frames are stale.
 
 ## Blank H200 machine setup
 
-The upstream openpi project is tested on Ubuntu 22.04. Full JAX fine-tuning
-requires more than 70 GB of GPU memory; the portable defaults target one H200
-with `fsdp_devices=1` and batch size 32. Expose one H200 with
-`CUDA_VISIBLE_DEVICES=0` in the commands below. The current JAX script supports
-multi-device meshes on one node, but not multi-node training.
+The upstream openpi project is tested on Ubuntu 22.04.
+Full JAX fine-tuning requires more than 70 GB of GPU memory; the full-state configs' portable defaults target one H200 with `fsdp_devices=1` and batch size 32, while the gripper-only and relative-history recipes expect 8 or 4 GPUs (see the recipe table under [Registered configs](#registered-configs)).
+Expose one H200 with `CUDA_VISIBLE_DEVICES=0` in the single-device commands below.
+The current JAX script supports multi-device meshes on one node, but not multi-node training.
 
 Start with a working NVIDIA driver:
 
@@ -731,15 +802,16 @@ GIT_LFS_SKIP_SMUDGE=1 uv sync
 GIT_LFS_SKIP_SMUDGE=1 uv pip install -e .
 ```
 
-Clone or move the repository onto local SSD with enough space for the dataset,
-π0.5 base checkpoint, two independent norm-stat trees, and experiment
-checkpoints. The configs use `./assets` and `./checkpoints`, resolved from the
-repository working directory. Always run commands from the repository root.
+Clone or move the repository onto local SSD with enough space for the datasets, the π0.5 base checkpoint, one independent norm-stat tree per config, and experiment checkpoints.
+The configs use `./assets` and `./checkpoints`, resolved from the repository working directory.
+Always run commands from the repository root.
 
-The upstream checkpoint downloader caches in `~/.cache/openpi` by default. A
-large local SSD cache can be selected before any download:
+Set the following from the repository root.
+`OPENPI_ROOT` records that root for commands run from other directories, such as the client install in the deployment section.
+The upstream checkpoint downloader caches in `~/.cache/openpi` by default; a large local SSD cache can be selected before any download:
 
 ```bash
+export OPENPI_ROOT=$(pwd)
 export OPENPI_DATA_HOME=/mnt/localssd/openpi-cache
 export HF_HOME=/mnt/localssd/huggingface
 export HF_LEROBOT_HOME=/mnt/localssd/lerobot_home
@@ -757,10 +829,8 @@ uv run huggingface-cli download byang11259/cardboard_box_tcp_curated \
   --local-dir "$HF_LEROBOT_HOME/byang11259/cardboard_box_tcp_curated"
 ```
 
-For the logical path, annotate next, then run the dry-run and materialization
-commands above and record content hashes for the local
-train/validation/test datasets. The long path points directly at this pinned
-source download and does not run the splitter.
+For the logical path, annotate next, then run the dry-run and materialization commands above and record content hashes for the local train/validation/test datasets.
+The long path does not run the splitter; it re-encodes this pinned download into `local/cardboard_box_tcp_curated_x264` with the tool described under [Derived datasets](#derived-datasets), because no config reads the HEVC download directly.
 
 Verify JAX sees the intended devices:
 
@@ -769,11 +839,92 @@ CUDA_VISIBLE_DEVICES=0 \
   uv run python -c "import jax; print(jax.default_backend()); print(jax.devices())"
 ```
 
-The expected output is the GPU backend and one H200. Do not continue if the
-device count is incompatible with `fsdp_devices=1` or if either
-camera/calibration check fails. For the recommended logical path, also stop if
-materialization and grouped-split review are incomplete. The long path is the
-only intentional unsegmented exception.
+The expected output is the GPU backend and one H200, or the 8 or 4 devices a multi-GPU recipe needs.
+Do not continue if the device count is incompatible with the config's `fsdp_devices` or if either camera/calibration check fails.
+For the recommended logical path, also stop if materialization and grouped-split review are incomplete.
+The long-episode and vid7to54 configs are the intentional exceptions that skip the logical split.
+
+## Derived datasets
+
+None of the nine configs reads a Hugging Face download directly.
+Every `repo_id` is a `local/...` LeRobot v2.1 directory under `HF_LEROBOT_HOME`, derived from a public source as follows:
+
+| `repo_id` | Public source | Derivation | Reproducible from this repository |
+| --- | --- | --- | --- |
+| `local/cardboard_box_tcp_curated_logical_train` | `byang11259/cardboard_box_tcp_curated` (pinned revision above) | `scripts/split_cardboard_box_lerobot_v21.py` with a reviewed `configs/cardboard_box_segments.json` | yes, given the reviewed manifest |
+| `local/cardboard_box_tcp_curated_x264` | `byang11259/cardboard_box_tcp_curated` (pinned revision above) | `scripts/reencode_lerobot_v21_videos.py` without `--scale` | yes |
+| `local/cardboard_box_tcp_curated_10s_x264` | `byang11259/cardboard_box_tcp_curated` | resegmentation into 107 episodes of about 10 s, x264 re-encode, episodes 100-103 relabeled from a placeholder to the standard task string | **no**: neither the resegmentation nor the relabel is scripted here |
+| `local/cardboard_box_tcp_vid7to54_x264` | [`byang11259/cardboard_box_tcp_vid7to54`](https://huggingface.co/datasets/byang11259/cardboard_box_tcp_vid7to54) (46 session-length episodes, 205,213 frames, 960 x 960 declared) | `scripts/reencode_lerobot_v21_videos.py` with a `--scale` this repository does not record (confirm it from the training copy's `REENCODE_PROVENANCE.md` or by probing its videos with `ffprobe`), then episodes 37-39 relabeled from the placeholder `TODO: set task description` to the standard task string after visual review | re-encode provisional until the scale is confirmed; the relabel is a manual edit that is not scripted here |
+| `local/stack_cubes_tcp_x264` | [`byang11259/stack_cubes_tcp`](https://huggingface.co/datasets/byang11259/stack_cubes_tcp) (46 episodes, 33,276 frames, 1920 px) | `scripts/reencode_lerobot_v21_videos.py --scale 384` | yes |
+| `local/stack_cubes_takes_x264` | [`byang11259/stack_cubes_takes`](https://huggingface.co/datasets/byang11259/stack_cubes_takes) (43 episodes, 10,664 frames, 1920 px) | `scripts/reencode_lerobot_v21_videos.py --scale 384` | yes |
+
+### Re-encoding videos with `scripts/reencode_lerobot_v21_videos.py`
+
+The re-encode exists because lerobot's torchcodec decode path fails on the sparse-keyframe, B-frame source exports (see the note under [Registered configs](#registered-configs)).
+The tool mirrors a LeRobot v2.1 dataset root into a new one:
+
+```text
+uv run python scripts/reencode_lerobot_v21_videos.py --src PATH --dst PATH [--scale INT] [--crf INT] [--gop INT] [--preset STR] [--workers INT] [--overwrite]
+```
+
+`--src` and `--dst` are required.
+The defaults are no `--scale` (the source size is kept), `--crf 14`, `--gop 15`, `--preset medium`, `--workers 4`, and `--no-overwrite`.
+The tool exits with an error for a `--scale` that is not a positive even width (yuv420p needs even dimensions), a `--crf` outside `[0, 51]`, a `--gop` below 1, an empty `--preset`, a `--workers` below 1, a `--src` without `meta/info.json` or without any `videos/**/*.mp4`, a `--dst` that equals, contains, or lies inside `--src`, and a missing `ffmpeg` on `PATH`.
+
+- Every file that is not a `videos/**/*.mp4` is copied byte-identically into `DST` (`data/` parquet, `meta/`, and anything else); `meta/info.json` is then rewritten as described below, and `REENCODE_PROVENANCE.md` is added.
+- Every `videos/**/*.mp4` is re-encoded as `ffmpeg -hide_banner -loglevel error -nostdin -y -i SRC -map 0:v:0 [-vf scale=N:-2] -an -c:v libx264 -preset PRESET -crf CRF -g GOP -bf 0 -pix_fmt yuv420p -movflags +faststart -f mp4 OUT`.
+  No `-r` is passed, so the source frame rate is preserved.
+- With `--scale N` the filter `-vf scale=N:-2` is applied: the width becomes `N` and the height keeps the aspect ratio rounded to an even number, so a square source becomes `N x N`.
+- ffmpeg writes `<name>.mp4.partial`, which is renamed to the final name only after ffmpeg exits successfully; a failed encode deletes the partial file and aborts the run.
+- An output that already exists is kept (not re-encoded) unless `--overwrite`, but it is verified against the current arguments either way.
+  An interrupted run can therefore be resumed by repeating the same command, and a mirror made with a different `--scale` fails verification until it is re-encoded with `--overwrite`.
+- Every output is decoded once with PyAV and checked against its source: the same frame count, the same frame rate, no B-frames, the first frame is a keyframe, no keyframe gap larger than `GOP` (the tail after the last keyframe counts as a gap), codec `h264` with pixel format `yuv420p`, and the expected size (the source size without `--scale`, or `N` wide by the even aspect-preserving height that `scale=N:-2` produces).
+  An undecodable output counts as a violation.
+  Violations are collected across all videos, and the tool exits non-zero naming every failing file.
+- Videos are processed on `--workers` threads, each running one multithreaded ffmpeg; ffmpeg is located with `shutil.which`.
+- All videos of one video key must decode to the same size; otherwise the tool exits with an error before writing metadata.
+- On success `meta/info.json` is rewritten for every feature with `dtype: video`.
+  The feature's own `shape` field (`[H, W, 3]`) is updated with `--scale` and left alone without it.
+  Among the keys that the pinned lerobot 0.1.0 `get_video_info` writes into `features[key]["info"]`, `video.height` and `video.width` are updated when present and only with `--scale`, while `video.codec` becomes `h264` and `video.pix_fmt` becomes `yuv420p` always.
+  The same edits are applied to a non-empty `features[key]["video_info"]` dict, the key the portable exporter writes; in either dict `video.channels` becomes 3 when present, and a true `has_audio` becomes false with its `audio.*` keys removed because audio is dropped.
+- The tool warns without failing when `info.json` declares a `total_videos` that differs from the number of files found, or when a source feature's declared `shape` disagrees with the decoded source video.
+- `DST/REENCODE_PROVENANCE.md` is deleted when a run starts and written at its end.
+  A successful run's file records the resolved absolute source and destination paths, a UTC timestamp, the first line of `ffmpeg -version`, the output-side ffmpeg video arguments, how many videos were encoded in this run versus kept from an earlier one, every argument (`--src`, `--dst`, `--scale`, `--crf`, `--gop`, `--preset`, `--workers`, `--overwrite`), and a per-video table (relative path, source frames, output frames, output width x height).
+  A run that fails verification writes the same file with a `FAILED` banner listing the offending files and `FAILED` table rows, and leaves `meta/info.json` as the unmodified source copy, so a directory left behind by a failed run never passes for a finished mirror.
+
+Reproduce the four re-encoded copies from `huggingface-cli download --repo-type dataset` targets laid out like the curated download above:
+
+```bash
+uv run python scripts/reencode_lerobot_v21_videos.py \
+  --src "$HF_LEROBOT_HOME/byang11259/cardboard_box_tcp_curated" \
+  --dst "$HF_LEROBOT_HOME/local/cardboard_box_tcp_curated_x264"
+
+# Provisional: this repository does not record whether the vid7to54 training copy was downscaled.
+# Confirm the frame size from that copy's REENCODE_PROVENANCE.md, if it has one, or with ffprobe
+# on its videos, and add "--scale 384" if it shows 384 px frames.
+uv run python scripts/reencode_lerobot_v21_videos.py \
+  --src "$HF_LEROBOT_HOME/byang11259/cardboard_box_tcp_vid7to54" \
+  --dst "$HF_LEROBOT_HOME/local/cardboard_box_tcp_vid7to54_x264"
+
+uv run python scripts/reencode_lerobot_v21_videos.py \
+  --src "$HF_LEROBOT_HOME/byang11259/stack_cubes_tcp" \
+  --dst "$HF_LEROBOT_HOME/local/stack_cubes_tcp_x264" \
+  --scale 384
+
+uv run python scripts/reencode_lerobot_v21_videos.py \
+  --src "$HF_LEROBOT_HOME/byang11259/stack_cubes_takes" \
+  --dst "$HF_LEROBOT_HOME/local/stack_cubes_takes_x264" \
+  --scale 384
+```
+
+The defaults `--crf 14 --gop 15` are the settings recorded for the existing copies.
+After the vid7to54 re-encode, episodes 37-39 still carry the placeholder task string; the training copy had them relabeled by hand, and this repository does not script that edit.
+The public `byang11259/cardboard_box_tcp_vid7to54` export declares 960 x 960 video frames in its `meta/info.json`, unlike the 384 px curated exports, and nothing in this repository records whether its derived copy was downscaled.
+The vid7to54 command above is therefore provisional: confirm the frame size from the training copy's `REENCODE_PROVENANCE.md`, if it has one, or by probing its videos with `ffprobe`, add `--scale 384` if that copy was downscaled, and do not assume the 384 px crop geometry described under [Cropped fisheye views](#cropped-fisheye-views-image_crop) until then.
+The `local/cardboard_box_tcp_curated_10s_x264` copy cannot be regenerated with this tool at all: it is a resegmentation of the curated source into about 10 s episodes, and neither that segmentation nor its relabel of episodes 100-103 is scripted here.
+An existing `stack_cubes_tcp_x264` copy (46 episodes, 33,276 frames) made before this tool existed decodes as h264 384 x 384 at 29.97 fps with no B-frames, a keyframe on frame 0, and no keyframe gap above 15 in any of its 92 videos, but its `meta/info.json` still declares shape `[1920, 1920, 3]` and `video.codec: hevc` because its metadata was never rewritten.
+A copy rebuilt with the tool has the same stream properties and differs from it in `meta/info.json` and in the added `REENCODE_PROVENANCE.md`.
+Treat each derived directory's `REENCODE_PROVENANCE.md` and content hash as part of the experiment record.
 
 ## CPU preflight
 
@@ -813,7 +964,7 @@ JAX_PLATFORMS=cpu CUDA_VISIBLE_DEVICES='' \
   --num-samples 32
 ```
 
-Original long-source relative, absolute, and gripper-only:
+Original long-source relative and absolute:
 
 ```bash
 JAX_PLATFORMS=cpu CUDA_VISIBLE_DEVICES='' \
@@ -827,22 +978,42 @@ JAX_PLATFORMS=cpu CUDA_VISIBLE_DEVICES='' \
   --config-name pi05_umi_dual_franka_cardboard_box_absolute_long_episode \
   --repo-id local/cardboard_box_tcp_curated_x264 \
   --num-samples 32
+```
 
+The four gripper-only configs, each against its own registered repo:
+
+```bash
 JAX_PLATFORMS=cpu CUDA_VISIBLE_DEVICES='' \
   uv run python scripts/inspect_umi_dual_franka_dataset.py \
   --config-name pi05_umi_dual_franka_cardboard_box_relative_gripper_only_long_episode \
+  --repo-id local/cardboard_box_tcp_curated_10s_x264 \
+  --num-samples 32
+
+JAX_PLATFORMS=cpu CUDA_VISIBLE_DEVICES='' \
+  uv run python scripts/inspect_umi_dual_franka_dataset.py \
+  --config-name pi05_umi_dual_franka_cardboard_box_relative_gripper_only_crop272_long_episode \
   --repo-id local/cardboard_box_tcp_curated_x264 \
+  --num-samples 32
+
+JAX_PLATFORMS=cpu CUDA_VISIBLE_DEVICES='' \
+  uv run python scripts/inspect_umi_dual_franka_dataset.py \
+  --config-name pi05_umi_dual_franka_cardboard_box_relative_gripper_only_vid7to54 \
+  --repo-id local/cardboard_box_tcp_vid7to54_x264 \
+  --num-samples 32
+
+JAX_PLATFORMS=cpu CUDA_VISIBLE_DEVICES='' \
+  uv run python scripts/inspect_umi_dual_franka_dataset.py \
+  --config-name pi05_umi_dual_franka_stack_cubes_relative_gripper_only \
+  --repo-id local/stack_cubes_tcp_x264 \
   --num-samples 32
 ```
 
-The inspector verifies raw16 shapes, `action[t] = state[t + 1]`, transformed
-state/action shapes (state20 for full-state configs, 2-D gripper state for the
-gripper-only config, action20 for all), image masks, and raw16 round trips —
-for the gripper-only config it emulates the documented client-side anchor
-composition before checking the round trip. On the long repo,
-its reported episode count means **source** episodes. It samples chunks that
-fit within those source bounds; it does not infer or mask physical-box
-boundaries. Review known boundary-adjacent chunks separately.
+The inspector verifies raw16 shapes, `action[t] = state[t + 1]`, transformed state/action shapes (state20 for full-state configs, 2-D gripper state for the gripper-only configs, action20 for all), image masks, and raw16 round trips; for the gripper-only configs it emulates the documented client-side anchor composition before checking the round trip.
+It does not support `pi05_umi_dual_franka_stack_cubes_relative_history`: it requests only the current state row and derives its expected state dimension from the output transform type, so that config's 20-D relative-history state fails its 2-D check.
+Preflight that config with the config tests above and a training smoke run instead.
+On a source-episode repo, its reported episode count means **source** episodes.
+It samples chunks that fit within those source bounds; it does not infer or mask physical-box boundaries.
+Review known boundary-adjacent chunks separately.
 
 These are schema/transform preflights, not a substitute for a small
 dataloader inspection, GPU compilation test, camera dry run, or
@@ -896,30 +1067,25 @@ dimensions in the physical stats are stop signs.
 
 ### Raw-rot6d variant of the quantile stats
 
-rot6d components are rotation-matrix entries, inherently bounded in [-1, 1]
-and geometrically meaningful, so per-dim quantile scaling distorts the
-rotation manifold the loss is computed on. For runs that keep openpi's
-quantile normalization on translation and gripper dims (and the 2-D
-gripper-only state) but pass rot6d through raw — network output feeds
-``rotation_6d_to_matrix`` directly — neutralize the 12 rot6d action dims of
-the stats FILE after computing it:
+rot6d components are rotation-matrix entries, inherently bounded in [-1, 1] and geometrically meaningful, so per-dim quantile scaling distorts the rotation manifold the loss is computed on.
+For runs that keep openpi's quantile normalization on translation and gripper dims (and the 2-D gripper-only state) but pass rot6d through raw, so that the network output feeds `rotation_6d_to_matrix` directly, neutralize the rot6d dims of the stats FILE after computing it:
 
 ```bash
 uv run scripts/neutralize_rot6d_norm_stats.py \
   --config-name pi05_umi_dual_franka_cardboard_box_relative_gripper_only_long_episode
 ```
 
-This writes neutral parameters (mean 0 / std 1 / q01 -1 / q99 +1) into the
-rot6d entries, making the quantile normalizer an identity for them, and keeps
-a one-time ``norm_stats.json.pre_rot6d_neutral.bak`` backup. The file-level
-approach keeps every checkpoint self-consistent: each embeds the stats it
-trained with, so older full-normalization checkpoints under the same config
-still serve exactly as trained.
+This writes neutral parameters (mean 0 / std 1 / q01 -1 / q99 +1) into the rot6d entries, making the quantile normalizer an identity for them, and keeps a one-time `norm_stats.json.pre_rot6d_neutral.bak` backup.
+The 12 rot6d action dims are always neutralized.
+The script also reads the config's `state_mode`: for `relative_history` it neutralizes the 12 rot6d dims of the 20-D `state` entry as well, because that state shares the `[xyz(3), rot6d(6), gripper(1)]` arm layout; for `full` and `gripper_only` it leaves the state alone, and a 2-D gripper-only state is skipped even when asked because it has no rot6d dims.
+Override the automatic choice with `--include-state True` or `--include-state False`.
+The file-level approach keeps every checkpoint self-consistent: each embeds the stats it trained with, so older full-normalization checkpoints under the same config still serve exactly as trained.
+Only the two stack-cubes configs record raw rot6d as part of their recipe; their neutralize commands follow their norm-stat commands below.
+For every cardboard-box config, including vid7to54, neutralizing is an optional raw-rot6d variant rather than the recorded recipe.
 
 ### Original long-source stats (ablation)
 
-These commands intentionally traverse the unsegmented source episodes through
-the stock 50-step action-chunk path:
+These commands intentionally traverse source-derived episodes that are not box-segmented (three configs read the source episodes as recorded, and `_gripper_only_long_episode` reads the 10 s time-resegmented copy) through the stock 50-step action-chunk path:
 
 ```bash
 uv run scripts/compute_norm_stats.py \
@@ -945,13 +1111,54 @@ assets/pi05_umi_dual_franka_cardboard_box_relative_gripper_only_long_episode/loc
 assets/pi05_umi_dual_franka_cardboard_box_relative_gripper_only_crop272_long_episode/local/cardboard_box_tcp_curated_x264/norm_stats.json
 ```
 
-The long relative stats include any fixed-anchor jumps across physical-box
-boundaries. All long stats include source-end clamping/repetition. The
-gripper-only file's `state` stats are 2-D; its action stats follow the same
-relative distribution as the relative config. Treat those distributions as
-part of the ablation; do not replace them with logical stats to make the run
-appear better behaved. Inspect all seven files and record their asset IDs with
-the experiments.
+The long relative stats include any fixed-anchor jumps across physical-box boundaries.
+All long stats include source-end clamping/repetition.
+The two gripper-only files' `state` stats are 2-D; their action stats follow the same relative distribution as the relative config.
+Treat those distributions as part of the ablation; do not replace them with logical stats to make the run appear better behaved.
+Inspect all nine files (these four, the two logical files, and the three below) and record their asset IDs with the experiments.
+
+### vid7to54 and stack-cubes stats
+
+The vid7to54 config traverses the complete session-length export, and the stack-cubes configs traverse their own derived repos:
+
+```bash
+uv run scripts/compute_norm_stats.py \
+  --config-name pi05_umi_dual_franka_cardboard_box_relative_gripper_only_vid7to54
+
+uv run scripts/compute_norm_stats.py \
+  --config-name pi05_umi_dual_franka_stack_cubes_relative_gripper_only
+
+uv run scripts/compute_norm_stats.py \
+  --config-name pi05_umi_dual_franka_stack_cubes_relative_history
+```
+
+They write three more independent files:
+
+```text
+assets/pi05_umi_dual_franka_cardboard_box_relative_gripper_only_vid7to54/local/cardboard_box_tcp_vid7to54_x264/norm_stats.json
+assets/pi05_umi_dual_franka_stack_cubes_relative_gripper_only/local/stack_cubes_tcp_x264/norm_stats.json
+assets/pi05_umi_dual_franka_stack_cubes_relative_history/local/stack_cubes_takes_x264/norm_stats.json
+```
+
+The vid7to54 pass decodes 205,213 frames from 46 session-length videos per camera; the config's 32 data workers exist for this step as much as for training.
+The two gripper-only files' `state` stats are 2-D; the relative-history file's `state` stats are 20-D (previous-frame pose in the current TCP frame plus the current grippers).
+The recorded recipe of the two stack-cubes configs keeps rot6d raw; neutralize each of their files after computing it (the relative-history run patches the `state` entry too):
+
+```bash
+uv run scripts/neutralize_rot6d_norm_stats.py \
+  --config-name pi05_umi_dual_franka_stack_cubes_relative_gripper_only
+
+uv run scripts/neutralize_rot6d_norm_stats.py \
+  --config-name pi05_umi_dual_franka_stack_cubes_relative_history
+```
+
+The vid7to54 config copies the 10 s gripper-only recipe, and neither of them records a neutralize step.
+To train vid7to54 as an optional raw-rot6d variant instead, neutralize its file the same way and record that choice with the run:
+
+```bash
+uv run scripts/neutralize_rot6d_norm_stats.py \
+  --config-name pi05_umi_dual_franka_cardboard_box_relative_gripper_only_vid7to54
+```
 
 ## JAX training on H200
 
@@ -1012,11 +1219,8 @@ implausible Cartesian magnitudes.
 
 ### Original long-source training (ablation)
 
-After computing the three long-source norm-stat files, compile and execute two
-steps for each long config (append the equivalent
-`pi05_umi_dual_franka_cardboard_box_relative_gripper_only_long_episode`
-commands with `--exp-name=fold_box_relative_gripper_only_smoke` /
-`fold_box_relative_gripper_only_v1`):
+After computing the four long-source norm-stat files, compile and execute two steps for each long config.
+The two full-state commands are shown here; the two gripper-only long configs follow the multi-GPU pattern under [Gripper-only and relative-history training](#gripper-only-and-relative-history-training):
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 \
@@ -1056,14 +1260,62 @@ CUDA_VISIBLE_DEVICES=0 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 \
   --exp-name=fold_box_absolute_long_episode_v1
 ```
 
-The registered defaults apply (one-H200 for the full-state configs, 8-GPU
-batch-128 for the gripper-only config). Cross-box chunks are expected here; stop
-only if behavior differs from the documented stock semantics, values are
-non-finite, or transforms/cameras are wrong. Compare long relative versus long
-absolute to isolate the action representation within the unsegmented source
-path. Comparing a long config with a logical config also changes episode
-construction, sample distribution, terminal targets, and train/validation
-availability, so it is not a pure action-representation ablation.
+The registered one-H200 defaults apply to these two full-state configs.
+Cross-box chunks are expected here; stop only if behavior differs from the documented stock semantics, values are non-finite, or transforms/cameras are wrong.
+Compare long relative versus long absolute to isolate the action representation within the unsegmented source path.
+Comparing a long config with a logical config also changes episode construction, sample distribution, terminal targets, and train/validation availability, so it is not a pure action-representation ablation.
+
+### Gripper-only and relative-history training
+
+The four gripper-only configs register an 8-GPU recipe (batch 128, `fsdp_devices=8`, 10,000 steps) and the relative-history config a 4-GPU recipe (batch 64, `fsdp_devices=4`, 6,000 steps, checkpoints every 2,000).
+Smoke-test each on one GPU by overriding the mesh and the batch together, because the training script rejects a batch size that the visible device count does not divide and a device count that `fsdp_devices` does not divide:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 \
+  uv run scripts/train.py \
+  pi05_umi_dual_franka_cardboard_box_relative_gripper_only_long_episode \
+  --exp-name=fold_box_relative_gripper_only_smoke \
+  --num-train-steps=2 \
+  --batch-size=1 \
+  --fsdp-devices=1 \
+  --num-workers=0 \
+  --save-interval=1 \
+  --no-wandb-enabled
+```
+
+Repeat with the other four config names and their own `--exp-name`.
+Confirm that each smoke run loads its own asset tree (`local/cardboard_box_tcp_curated_10s_x264`, `local/cardboard_box_tcp_curated_x264`, `local/cardboard_box_tcp_vid7to54_x264`, `local/stack_cubes_tcp_x264`, or `local/stack_cubes_takes_x264`) under its config-name directory, and that the loaded stats carry the neutralized rot6d entries when the recipe calls for them.
+Then run the registered recipes on the matching number of GPUs:
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 \
+  uv run scripts/train.py \
+  pi05_umi_dual_franka_cardboard_box_relative_gripper_only_long_episode \
+  --exp-name=fold_box_relative_gripper_only_v1
+
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 \
+  uv run scripts/train.py \
+  pi05_umi_dual_franka_cardboard_box_relative_gripper_only_crop272_long_episode \
+  --exp-name=fold_box_relative_gripper_only_crop272_v1
+
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 \
+  uv run scripts/train.py \
+  pi05_umi_dual_franka_cardboard_box_relative_gripper_only_vid7to54 \
+  --exp-name=fold_box_relative_gripper_only_vid7to54_v1
+
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 \
+  uv run scripts/train.py \
+  pi05_umi_dual_franka_stack_cubes_relative_gripper_only \
+  --exp-name=stack_cubes_relative_gripper_only_v1
+
+CUDA_VISIBLE_DEVICES=0,1,2,3 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 \
+  uv run scripts/train.py \
+  pi05_umi_dual_franka_stack_cubes_relative_history \
+  --exp-name=stack_cubes_relative_history_v1
+```
+
+The two gripper-only `_long_episode` configs and the vid7to54 config train on source-derived episodes that are not box-segmented (the 10 s copy behind `_gripper_only_long_episode` is time-resegmented, not box-segmented), so LeRobot chunks can still cross a physical-box boundary and the long-source caveats above apply to them as well.
+For the relative-history run, additionally watch the first logged state batch: it must be 20-D, and rows at an episode's first frame carry an exact identity history (zero translation and rot6d `[1, 0, 0, 0, 1, 0]` per arm) because LeRobot clamps the window there.
 
 ## Rank checkpoints on held-out logical episodes
 
@@ -1152,16 +1404,36 @@ CUDA_VISIBLE_DEVICES=0 uv run scripts/serve_policy.py --port=8000 \
   --policy.dir=checkpoints/pi05_umi_dual_franka_cardboard_box_absolute_long_episode/fold_box_absolute_long_episode_v1/<step>
 ```
 
-Long-source gripper-only cross-embodiment variant (its WebSocket response is a
-**relative** chunk that the robot client must compose with its own saved
-anchors — see the deployment section):
+Cross-embodiment variants (every config whose `state_mode` is not `"full"` serves a **relative** chunk that the robot client must compose with its own saved anchors; see the deployment section):
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 uv run scripts/serve_policy.py --port=8000 \
   policy:checkpoint \
   --policy.config=pi05_umi_dual_franka_cardboard_box_relative_gripper_only_long_episode \
   --policy.dir=checkpoints/pi05_umi_dual_franka_cardboard_box_relative_gripper_only_long_episode/fold_box_relative_gripper_only_v1/<step>
+
+CUDA_VISIBLE_DEVICES=0 uv run scripts/serve_policy.py --port=8000 \
+  policy:checkpoint \
+  --policy.config=pi05_umi_dual_franka_cardboard_box_relative_gripper_only_crop272_long_episode \
+  --policy.dir=checkpoints/pi05_umi_dual_franka_cardboard_box_relative_gripper_only_crop272_long_episode/fold_box_relative_gripper_only_crop272_v1/<step>
+
+CUDA_VISIBLE_DEVICES=0 uv run scripts/serve_policy.py --port=8000 \
+  policy:checkpoint \
+  --policy.config=pi05_umi_dual_franka_cardboard_box_relative_gripper_only_vid7to54 \
+  --policy.dir=checkpoints/pi05_umi_dual_franka_cardboard_box_relative_gripper_only_vid7to54/fold_box_relative_gripper_only_vid7to54_v1/<step>
+
+CUDA_VISIBLE_DEVICES=0 uv run scripts/serve_policy.py --port=8000 \
+  policy:checkpoint \
+  --policy.config=pi05_umi_dual_franka_stack_cubes_relative_gripper_only \
+  --policy.dir=checkpoints/pi05_umi_dual_franka_stack_cubes_relative_gripper_only/stack_cubes_relative_gripper_only_v1/<step>
+
+CUDA_VISIBLE_DEVICES=0 uv run scripts/serve_policy.py --port=8000 \
+  policy:checkpoint \
+  --policy.config=pi05_umi_dual_franka_stack_cubes_relative_history \
+  --policy.dir=checkpoints/pi05_umi_dual_franka_stack_cubes_relative_history/stack_cubes_relative_history_v1/<step>
 ```
+
+The relative-history server additionally expects `observation/state` as an `(observation_horizon, 16)` window, oldest frame first (see [Relative-history-state cross-embodiment variant](#relative-history-state-cross-embodiment-variant)).
 
 Serving support does not make a long-source checkpoint deployment-qualified.
 Keep it in offline/controller-disabled evaluation until it passes the same
@@ -1204,6 +1476,19 @@ observation = {
 action_chunk = policy.infer(observation)["actions"]
 ```
 
+For `pi05_umi_dual_franka_stack_cubes_relative_history`, send the state as the observation window instead, oldest first with the current frame last; its `observation_horizon` is 2, so the window is the previous and the current raw state:
+
+```python
+observation = {
+    "observation/state": np.stack([previous_raw_absolute_state16, raw_absolute_state16]),
+    "observation/left_head": left_front_equi_uint8_hwc,
+    "observation/right_head": right_front_equi_uint8_hwc,
+    "prompt": "Stack the cubes into a tower",
+}
+```
+
+A bare `(16,)` state is accepted by that config but degrades to "no motion": the history frame is taken to be the current frame, so the relative-history entries are identity and only the grippers carry information.
+
 The state must describe both live chopstick-tip TCPs in the calibrated common
 world frame, have a floating dtype, and use `xyzw`, left-then-right, and
 `1 = open`. Prefer native 384 × 384 `uint8` HWC images; the adapter also accepts
@@ -1211,16 +1496,12 @@ CHW and validated floating image ranges before the shared resize/pad. Images
 must be timestamp-matched to the state. The server applies checkpoint
 normalization; the client must not pre-normalize state or actions.
 
-For the four full-state configs the WebSocket response is an absolute raw
-action chunk with shape `[50, 16]` and the same left/right,
-`xyz + xyzw + gripper` layout as the raw state. The gripper-only config
-instead returns a `[50, 16]` **relative** chunk in the same layout (see
-[Gripper-only-state cross-embodiment variant](#gripper-only-state-cross-embodiment-variant));
-its client must compose the chunk with its own saved query-time anchors. For the relative config, the server-side output transform uses
-the unnormalized state20 derived from that query as one immutable anchor for
-every waypoint, then returns absolute world-frame targets. Do not compose
-these returned targets a second time on the client. Either absolute baseline
-also returns absolute world-frame targets, directly decoded from action20.
+The response type follows the config's `state_mode`, not its name.
+With `state_mode="full"` (the four full-state configs) the WebSocket response is an absolute raw action chunk with shape `[50, 16]` and the same left/right, `xyz + xyzw + gripper` layout as the raw state.
+With any other `state_mode` (`gripper_only` in four configs, `relative_history` in one) the server has no absolute pose to compose with and returns a `[50, 16]` **relative** chunk in the same layout (see [Gripper-only-state cross-embodiment variant](#gripper-only-state-cross-embodiment-variant)); the client must compose the chunk with its own saved query-time anchors, and for the relative-history config that anchor is the last frame of the window it sent.
+For the full-state relative configs, the server-side output transform uses the unnormalized state20 derived from that query as one immutable anchor for every waypoint, then returns absolute world-frame targets.
+Do not compose these returned targets a second time on the client.
+Either absolute baseline also returns absolute world-frame targets, directly decoded from action20.
 
 Log the state16 sent with each request as the relative policy's anchor record,
 then apply the world/base/flange command chain to the returned absolute
@@ -1306,11 +1587,15 @@ The preflight suite and experiment checklist must cover:
 - independent, synchronized left and right anchors;
 - grippers remaining future absolute values with `1 = open`;
 - physical 20D stats and correct zero-padding/slicing to/from model 32D;
-- seven separate norm-stat trees across representation, state mode, image
-  crop, and episode/dataset path;
-- for the gripper-only config: a 2-D gripper state (no pose dimensions), a
+- nine separate norm-stat trees across representation, state mode, image
+  crop, and task/dataset path;
+- for the gripper-only configs: a 2-D gripper state (no pose dimensions), a
   relative served chunk, and client-side anchor composition matching the
   offline transform;
+- for the relative-history config: a 20-D state with no absolute pose, the
+  previous frame expressed in the current TCP frame, an oldest-first
+  observation window whose last frame anchors the relative actions, and an
+  identity history for a bare single-frame state;
 - online WebSocket transforms matching offline training transforms;
 - exactly two real camera streams, correct ordering, and an absent/masked base
   slot;
@@ -1340,6 +1625,8 @@ every reported result.
 
 - [Logical-episode splitter](../scripts/split_cardboard_box_lerobot_v21.py)
 - [Reviewed-manifest template](../configs/cardboard_box_segments.example.json)
+- [LeRobot v2.1 video re-encoder](../scripts/reencode_lerobot_v21_videos.py)
+- [rot6d norm-stat neutralizer](../scripts/neutralize_rot6d_norm_stats.py)
 - [Dual-Franka UMI policy transforms](../src/openpi/policies/umi_dual_franka_policy.py)
 - [Training data and model configs](../src/openpi/training/config.py)
 - [Dataset/chunk transform inspector](../scripts/inspect_umi_dual_franka_dataset.py)
@@ -1357,6 +1644,9 @@ every reported result.
 - [Dataset relative-representation notes](https://huggingface.co/datasets/byang11259/cardboard_box_tcp_curated#using-the-hy-vla--relative-representation)
 - [Dataset normalization notes](https://huggingface.co/datasets/byang11259/cardboard_box_tcp_curated#normalization)
 - [Pinned dataset revision](https://huggingface.co/datasets/byang11259/cardboard_box_tcp_curated/tree/a366d2b92723d795b6b93e6303f57708e87b63ea)
+- [Complete vid7to54 cardboard-box export](https://huggingface.co/datasets/byang11259/cardboard_box_tcp_vid7to54)
+- [Stack-cubes export](https://huggingface.co/datasets/byang11259/stack_cubes_tcp)
+- [Stack-cubes short-takes export](https://huggingface.co/datasets/byang11259/stack_cubes_takes)
 - [Hy-VLA SE(3) transform implementation, pinned revision](https://github.com/Tencent-Hunyuan/Hy-Embodied-0.5-VLA/blob/8ba4c8cbdf42a4bcf0a19be4bd2841405dfe15e9/hy_vla/utils/transform_utils.py#L16-L123)
 - [Hy UMI dataset config, pinned revision](https://github.com/Tencent-Hunyuan/Hy-Embodied-0.5-VLA/blob/8ba4c8cbdf42a4bcf0a19be4bd2841405dfe15e9/hy_vla/config/dataset/umi_lance.yaml#L28-L50)
 - [Hy UMI dataset loader, pinned revision](https://github.com/Tencent-Hunyuan/Hy-Embodied-0.5-VLA/blob/8ba4c8cbdf42a4bcf0a19be4bd2841405dfe15e9/hy_vla/data/umi_dataset.py#L520-L630)

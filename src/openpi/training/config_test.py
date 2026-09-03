@@ -245,7 +245,7 @@ def test_gripper_only_crop272_config_contract(monkeypatch, tmp_path):
     )
 
 
-def test_gripper_only_long_episode_uses_10s_dataset_with_crop200(monkeypatch, tmp_path):
+def test_gripper_only_long_episode_uses_10s_dataset_with_crop224(monkeypatch, tmp_path):
     monkeypatch.setattr(
         _config.DataConfigFactory,
         "_load_norm_stats",

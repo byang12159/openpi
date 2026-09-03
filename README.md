@@ -128,7 +128,7 @@ We will fine-tune the $\pi_{0.5}$ model on the [LIBERO dataset](https://libero-p
 2. Defining training configs and running training
 3. Spinning up a policy server and running inference
 
-For the dual-Franka UMI cardboard-box workflow—including recommended one-box logical episodes, optional original long-episode ablations, relative/absolute TCP actions, H200 training, and remote deployment—see the [dedicated guide](docs/umi_dual_franka_cardboard_box.md).
+For the dual-Franka UMI workflow - the cardboard-box task with recommended one-box logical episodes and optional original long-episode ablations, the stack-cubes task, relative/absolute TCP actions, the gripper-only and relative-history cross-embodiment state modes, H200 training, and remote deployment - see the [dedicated guide](docs/umi_dual_franka_cardboard_box.md).
 
 ### 1. Convert your data to a LeRobot dataset
 
