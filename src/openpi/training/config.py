@@ -412,9 +412,7 @@ class LeRobotUmiDualFrankaDataConfig(DataConfigFactory):
         )
 
         if self.state_mode not in umi_dual_franka_policy.STATE_MODES:
-            raise ValueError(
-                f"state_mode must be one of {umi_dual_franka_policy.STATE_MODES}, got {self.state_mode!r}"
-            )
+            raise ValueError(f"state_mode must be one of {umi_dual_franka_policy.STATE_MODES}, got {self.state_mode!r}")
         if self.state_mode == "relative_history" and self.observation_horizon < 2:
             raise ValueError(
                 "state_mode='relative_history' needs observation_horizon >= 2; "

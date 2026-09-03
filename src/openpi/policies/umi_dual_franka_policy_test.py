@@ -320,9 +320,7 @@ def test_gripper_only_outputs_return_relative_chunks_for_client_composition() ->
     identity20 = policy.raw16_to_absolute20(_raw_pose())
     _assert_same_raw_poses(served, policy.relative20_actions_to_raw16(identity20, relative))
     # Client-side composition with the query anchor recovers the absolute targets.
-    composed = policy.relative20_actions_to_raw16(
-        policy.raw16_to_absolute20(state), policy.raw16_to_absolute20(served)
-    )
+    composed = policy.relative20_actions_to_raw16(policy.raw16_to_absolute20(state), policy.raw16_to_absolute20(served))
     _assert_same_raw_poses(composed, actions)
     np.testing.assert_allclose(served[..., [7, 15]], actions[..., [7, 15]], atol=1e-6)
 
@@ -335,21 +333,15 @@ def test_gripper_only_rejects_unknown_state_mode() -> None:
 def test_image_crop_trims_views_and_leaves_state_actions_unchanged() -> None:
     state, actions = _sample_state_and_actions()
     record = _input_record(state, actions)
-    full = policy.UmiDualFrankaRelativeInputs(model_type=_model.ModelType.PI05, state_mode="gripper_only")(
-        dict(record)
-    )
+    full = policy.UmiDualFrankaRelativeInputs(model_type=_model.ModelType.PI05, state_mode="gripper_only")(dict(record))
     cropped = policy.UmiDualFrankaRelativeInputs(
         model_type=_model.ModelType.PI05, state_mode="gripper_only", image_crop=3
     )(dict(record))
 
     # The 5x7 test images crop to the centered 3x3 square: rows 1..3, cols 2..4.
     assert cropped["image"]["left_wrist_0_rgb"].shape == (3, 3, 3)
-    np.testing.assert_array_equal(
-        cropped["image"]["left_wrist_0_rgb"], full["image"]["left_wrist_0_rgb"][1:4, 2:5]
-    )
-    np.testing.assert_array_equal(
-        cropped["image"]["right_wrist_0_rgb"], full["image"]["right_wrist_0_rgb"][1:4, 2:5]
-    )
+    np.testing.assert_array_equal(cropped["image"]["left_wrist_0_rgb"], full["image"]["left_wrist_0_rgb"][1:4, 2:5])
+    np.testing.assert_array_equal(cropped["image"]["right_wrist_0_rgb"], full["image"]["right_wrist_0_rgb"][1:4, 2:5])
     assert cropped["image"]["base_0_rgb"].shape == (3, 3, 3)
     np.testing.assert_allclose(cropped["state"], full["state"])
     np.testing.assert_allclose(cropped["actions"], full["actions"])
@@ -454,9 +446,9 @@ def test_relative_history_inputs_anchor_actions_on_the_current_frame() -> None:
     current, actions = _sample_state_and_actions()
     window = np.stack((history, current))
 
-    result = policy.UmiDualFrankaRelativeInputs(
-        model_type=_model.ModelType.PI05, state_mode="relative_history"
-    )(_history_record(window, actions))
+    result = policy.UmiDualFrankaRelativeInputs(model_type=_model.ModelType.PI05, state_mode="relative_history")(
+        _history_record(window, actions)
+    )
 
     assert result["state"].shape == (policy.MODEL_STATE_DIM,)
     assert result["actions"].shape == (2, policy.MODEL_STATE_DIM)
@@ -501,4 +493,6 @@ def test_neutralize_covers_state_when_requested() -> None:
     actions_only = policy.neutralize_rot6d_norm_stats(stats)
     np.testing.assert_allclose(np.asarray(actions_only["state"].q01), base - 0.5)
     small = {"state": normalize.NormStats(mean=np.zeros(2), std=np.ones(2), q01=-np.ones(2), q99=np.ones(2))}
-    np.testing.assert_allclose(np.asarray(policy.neutralize_rot6d_norm_stats(small, keys=("state",))["state"].q01), -1.0)
+    np.testing.assert_allclose(
+        np.asarray(policy.neutralize_rot6d_norm_stats(small, keys=("state",))["state"].q01), -1.0
+    )

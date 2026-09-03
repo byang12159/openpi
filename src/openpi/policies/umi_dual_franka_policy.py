@@ -501,7 +501,9 @@ def center_crop_image(image: np.ndarray, side: int, *, name: str) -> np.ndarray:
         raise ValueError(f"{name} must be a 3-D HWC image, got {image.shape}.")
     height, width = image.shape[0], image.shape[1]
     if side <= 0 or side > min(height, width):
-        raise ValueError(f"image_crop must lie in (0, {min(height, width)}] for {name} of shape {image.shape}, got {side}.")
+        raise ValueError(
+            f"image_crop must lie in (0, {min(height, width)}] for {name} of shape {image.shape}, got {side}."
+        )
     top = (height - side) // 2
     left = (width - side) // 2
     return np.ascontiguousarray(image[top : top + side, left : left + side])
@@ -592,9 +594,7 @@ class UmiDualFrankaRelativeInputs(transforms.DataTransformFn):
             raise ValueError(f"state_mode must be one of {STATE_MODES}, got {self.state_mode!r}.")
 
     def __call__(self, data: dict) -> dict:
-        return _build_inputs(
-            data, relative_actions=True, state_mode=self.state_mode, image_crop=self.image_crop
-        )
+        return _build_inputs(data, relative_actions=True, state_mode=self.state_mode, image_crop=self.image_crop)
 
 
 @dataclasses.dataclass(frozen=True)
