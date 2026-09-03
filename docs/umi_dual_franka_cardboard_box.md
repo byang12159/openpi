@@ -19,8 +19,6 @@ representation and a controlled absolute-action baseline.
 > as an ablation: their chunks stay inside a source episode but can cross from
 > one physical box instance into the next.
 
-https://claude.ai/code/artifact/2a439908-c048-4e95-afe6-3101e53fc34b?via=auto_preview
-
 ## Registered configs
 
 | Episode path | Purpose | Config | Dataset repo |
@@ -161,7 +159,7 @@ while producing dangerous commands.
 The two `_long_episode` configs deliberately point at the untouched
 `byang11259/cardboard_box_tcp_curated` source repo and use the stock OpenPI
 LeRobot action-chunk path
-([OpenPI loader](https://github.com/Destiny000621/openpi/blob/59ce2725e887d44c36dd1a3d3106d00d8ad6cd5e/src/openpi/training/data_loader.py#L135-L147)):
+([OpenPI loader](../src/openpi/training/data_loader.py)):
 
 ```text
 delta_timestamps["action"] =
@@ -724,7 +722,7 @@ git lfs install
 curl -LsSf https://astral.sh/uv/install.sh | sh
 source "$HOME/.local/bin/env"
 
-git clone --recurse-submodules https://github.com/Destiny000621/openpi.git
+git clone --recurse-submodules https://github.com/byang12159/openpi.git
 cd openpi
 git checkout umi-dual-franka
 git submodule update --init --recursive
@@ -1364,7 +1362,7 @@ every reported result.
 - [Hy UMI dataset loader, pinned revision](https://github.com/Tencent-Hunyuan/Hy-Embodied-0.5-VLA/blob/8ba4c8cbdf42a4bcf0a19be4bd2841405dfe15e9/hy_vla/data/umi_dataset.py#L520-L630)
 - [Physical Intelligence π0.5 overview](https://www.physicalintelligence.company/blog/pi05)
 - [Official openpi repository](https://github.com/Physical-Intelligence/openpi)
-- [Pinned project-base OpenPI LeRobot chunk construction](https://github.com/Destiny000621/openpi/blob/59ce2725e887d44c36dd1a3d3106d00d8ad6cd5e/src/openpi/training/data_loader.py#L135-L147)
+- [OpenPI LeRobot chunk construction in this branch](../src/openpi/training/data_loader.py)
 - [Pinned LeRobot episode clamp/padding behavior](https://github.com/huggingface/lerobot/blob/0cf864870cf29f4738d3ade893e6fd13fbd7cdb5/lerobot/common/datasets/lerobot_dataset.py#L665-L678)
 - [Local openpi normalization guide](norm_stats.md)
 - [Local openpi remote-inference guide](remote_inference.md)
